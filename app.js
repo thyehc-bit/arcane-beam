@@ -1,6 +1,3 @@
-const DEBUG = true;
-let loggedOnce = false;
-
 import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
 
 const ui = {
@@ -56,21 +53,20 @@ let nextBossAt = BOSS_SCORE_STEP;
 
 // worldLandmarks palm push detection
 const handState = {
-  Left:  { lastCastMs: 0, lastTs: 0, lastArea: null, lastPalm2D: null, lastZ: null, lastZVel: 0 },
-  Right: { lastCastMs: 0, lastTs: 0, lastArea: null, lastPalm2D: null, lastZ: null, lastZVel: 0 },
+  Left:  { lastCastMs: 0, lastZ: null, lastTs: 0 },
+  Right: { lastCastMs: 0, lastZ: null, lastTs: 0 },
 };
-
 
 // Thresholds you can tune
 const TH = {
-  // world z velocity threshold (比較合理的起手式：先低一點確保能觸發)
-  zVelAbs: 0.18,        // <- 原本 1.0 太高，先降
-  areaJump: 1.06,       // <- 原本 1.14 太高，先降
-
-  // fallback 2D swing
-  speed2D: 0.95,        // normalized/sec
+  // "push" is mostly from z-velocity in world coordinates
+  // NOTE: depending on model conventions, "towards camera" could be dz < 0 or dz > 0.
+  // We use absolute speed + confirm with 2D area jump as safety.
+  zVelAbs: 1.0,     // meters/sec-ish (tune)
+  zVelSigned: 0.55, // meters/sec (tune)
+  areaJump: 1.14,   // 2D size jump confirm
+  // Beam cooldown is above
 };
-
 
 // -------------------- Pseudo-3D Camera --------------------
 const cam = {
@@ -530,68 +526,47 @@ function tryDetectCast(handednessLabel, landmarks2D, worldLandmarks, nowMs){
   const st = handState[handednessLabel] || handState.Right;
 
   const area = palmArea2D(landmarks2D);
-  const palm2 = palmCenter2D(landmarks2D);
 
-  // init
-  if(!st.lastTs){
+  if(!worldLandmarks){
+    // fallback: if no worldLandmarks, do nothing (or you could keep the old 2D heuristic)
+    return;
+  }
+
+  const z = palmZWorld(worldLandmarks);
+
+  if(st.lastZ == null){
+    st.lastZ = z;
     st.lastTs = nowMs;
+    st.lastCastMs = 0;
     st.lastArea = area;
-    st.lastPalm2D = palm2;
-    if(worldLandmarks) st.lastZ = palmZWorld(worldLandmarks);
     return;
   }
 
   const dt = Math.max(0.001, (nowMs - st.lastTs)/1000);
-  const areaRatio = (st.lastArea ? (area / st.lastArea) : 1.0);
+  const dz = (z - st.lastZ);     // world z delta
+  const zVel = dz / dt;          // world z velocity
 
-  // 2D fallback velocity
-  const v2 = st.lastPalm2D ? speed2D(palm2, st.lastPalm2D, dt) : 0;
-
-  // world z velocity (if available)
-  let zVel = null;
-  if(worldLandmarks){
-    const z = palmZWorld(worldLandmarks);
-    if(st.lastZ != null){
-      zVel = (z - st.lastZ) / dt;
-      st.lastZVel = zVel;
-    }
-    st.lastZ = z;
-  }
-
+  const areaRatio = area / (st.lastArea || area);
   const cooldownOK = (nowMs - st.lastCastMs) > HAND_COOLDOWN_MS;
 
-  // trigger logic:
-  // A) preferred: strong z push + area grows (靠近鏡頭手會變大)
-  const zPush = (zVel != null) && (Math.abs(zVel) > TH.zVelAbs) && (areaRatio > TH.areaJump);
+  // Main rule:
+  // 1) strong z velocity (signed OR absolute) AND 2) confirm by 2D area jump
+  // Signed direction can vary across implementations; absolute makes it robust.
+  const zStrong = (Math.abs(zVel) > TH.zVelAbs) || (zVel < -TH.zVelSigned) || (zVel > TH.zVelSigned);
+  const forwardConfirm = areaRatio > TH.areaJump;
 
-  // B) fallback: fast 2D swing + area grows
-  const swing2D = (v2 > TH.speed2D) && (areaRatio > TH.areaJump);
-
-  if(cooldownOK && (zPush || swing2D)){
+  if(cooldownOK && zStrong && forwardConfirm){
     st.lastCastMs = nowMs;
 
-    // 用 world 生成 3D 起點；如果沒有 worldLandmarks，就用 2D 推個近似值
-    let from3;
-    if(worldLandmarks){
-      const wp = palmXYWorld(worldLandmarks);
-      from3 = mapHandToScene(wp);
-    }else{
-      // fallback mapping (2D -> pseudo 3D)
-      from3 = { x: (0.5 - palm2.x) * 1.6, y: (palm2.y - 0.5) * 1.0, z: 1.4 };
-    }
-
+    const wp = palmXYWorld(worldLandmarks);
+    const from3 = mapHandToScene(wp);
     castBeam3D(from3, nowMs);
-
-    if(DEBUG){
-      console.log(`[CAST] ${handednessLabel} areaRatio=${areaRatio.toFixed(3)} v2=${v2.toFixed(2)} zVel=${zVel?.toFixed(3)}`);
-    }
   }
 
+  st.lastZ = z;
   st.lastTs = nowMs;
   st.lastArea = area;
-  st.lastPalm2D = palm2;
 }
-
 
 // -------------------- HUD / game flow --------------------
 function syncHUD(nowMs){
@@ -641,20 +616,6 @@ function resetGame(){
   setHint("重置完成。把手靠近鏡頭，『向前推進』施法！");
 }
 
-function palmCenter2D(landmarks){
-  const idx = [0,5,9,13,17];
-  let x=0,y=0;
-  for(const i of idx){ x += landmarks[i].x; y += landmarks[i].y; }
-  return { x:x/idx.length, y:y/idx.length };
-}
-
-function speed2D(curr, prev, dt){
-  const vx = (curr.x - prev.x) / dt;
-  const vy = (curr.y - prev.y) / dt;
-  return Math.hypot(vx, vy);
-}
-
-
 // -------------------- Main Loop --------------------
 let lastFrameMs = 0;
 
@@ -703,29 +664,10 @@ async function loop(nowMs){
       const world = wlm[i]; // may be undefined
       tryDetectCast(label, detections.landmarks[i], world, nowMs);
     }
-
-  if (DEBUG && detections && !loggedOnce) {
-    console.log("detections keys:", Object.keys(detections));
-    console.log("has landmarks:", !!detections.landmarks?.length);
-    console.log("has worldLandmarks:", !!detections.worldLandmarks?.length);
-    loggedOnce = true;
-  }
-
-
   }
 
   // render
   drawBackdrop();
-  if (DEBUG){
-    ctx.save();
-    ctx.fillStyle = "rgba(255,245,220,0.85)";
-    ctx.font = "16px ui-monospace, Menlo, Consolas, monospace";
-    const r = handState.Right;
-    const l = handState.Left;
-    ctx.fillText(`R zVel=${(r.lastZVel||0).toFixed(3)}  L zVel=${(l.lastZVel||0).toFixed(3)}`, 18, 28);
-    ctx.restore();
-  }
-
   drawEnemies();
   drawBeams(nowMs);
   drawParticles();
