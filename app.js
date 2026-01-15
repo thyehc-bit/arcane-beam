@@ -76,6 +76,179 @@ const cam = {
   horizon: 0.55,    // screen vertical anchor
 };
 
+// ---- Castle background (procedural) ----
+const bg = {
+  ready: false,
+  stars: [],
+  parallaxX: 0,
+};
+
+function initCastleBg(){
+  // stars in normalized space (0..1)
+  bg.stars = Array.from({ length: 160 }, () => ({
+    x: Math.random(),
+    y: Math.random()*0.62,       // upper sky area
+    r: 0.5 + Math.random()*1.6,
+    a: 0.25 + Math.random()*0.55,
+    tw: Math.random()*Math.PI*2,
+    tws: 0.6 + Math.random()*1.6
+  }));
+  bg.ready = true;
+}
+
+function drawCastleBackdrop(nowMs){
+  if(!bg.ready) initCastleBg();
+
+  // --- parallax from hands (uses handState.*.lastPalm2D if present) ---
+  let sumX = 0, n = 0;
+  for(const k of ["Left","Right"]){
+    const p = handState[k]?.lastPalm2D;
+    if(p){ sumX += p.x; n++; }
+  }
+  const avgX = n ? (sumX/n) : 0.5;                 // 0..1
+  const target = (avgX - 0.5) * 50;                // px
+  bg.parallaxX = bg.parallaxX + (target - bg.parallaxX) * 0.06;
+
+  const px = bg.parallaxX;
+
+  // ---- dim webcam a bit so castle reads ----
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // ---- sky gradient ----
+  const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  sky.addColorStop(0, "rgba(16, 24, 40, 0.62)");
+  sky.addColorStop(0.45, "rgba(8, 12, 18, 0.40)");
+  sky.addColorStop(1, "rgba(0, 0, 0, 0.22)");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // ---- moon glow ----
+  const mx = canvas.width * 0.78 + px*0.2;
+  const my = canvas.height * 0.22;
+  const mg = ctx.createRadialGradient(mx, my, 10, mx, my, canvas.height*0.34);
+  mg.addColorStop(0, "rgba(255,245,220,0.16)");
+  mg.addColorStop(0.35, "rgba(215,181,109,0.10)");
+  mg.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = mg;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  ctx.beginPath();
+  ctx.fillStyle = "rgba(255,245,220,0.12)";
+  ctx.arc(mx, my, Math.min(canvas.width,canvas.height)*0.06, 0, Math.PI*2);
+  ctx.fill();
+
+  // ---- stars (twinkle) ----
+  for(const s of bg.stars){
+    const tw = 0.55 + 0.45*Math.sin(nowMs/1000*s.tws + s.tw);
+    const x = (s.x*canvas.width) + px*0.15;
+    const y = (s.y*canvas.height);
+    ctx.fillStyle = `rgba(255,245,220,${s.a*tw})`;
+    ctx.beginPath();
+    ctx.arc(x, y, s.r, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // ---- distant mountains ----
+  const horizonY = canvas.height * cam.horizon;
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.beginPath();
+  ctx.moveTo(0, horizonY + canvas.height*0.08);
+  for(let i=0;i<=14;i++){
+    const t = i/14;
+    const x = t*canvas.width + px*0.08;
+    const y = horizonY + canvas.height*(0.07 + 0.03*Math.sin(t*10 + nowMs/4000));
+    ctx.lineTo(x,y);
+  }
+  ctx.lineTo(canvas.width, canvas.height);
+  ctx.lineTo(0, canvas.height);
+  ctx.closePath();
+  ctx.fill();
+
+  // ---- castle silhouette ----
+  const baseY = horizonY + canvas.height*0.12;
+  const baseH = canvas.height*0.34;
+  const castleW = canvas.width*0.62;
+  const castleX = canvas.width*0.19 + px*0.35;
+
+  ctx.fillStyle = "rgba(0,0,0,0.62)";
+  // main wall
+  ctx.fillRect(castleX, baseY, castleW, baseH);
+
+  // towers
+  const tower = (x, w, h) => {
+    ctx.fillRect(x, baseY - h, w, h);
+    // crenellation
+    const step = w/6;
+    for(let i=0;i<6;i++){
+      if(i%2===0) ctx.fillRect(x+i*step, baseY - h - 10, step, 10);
+    }
+  };
+  tower(castleX + castleW*0.02, castleW*0.12, baseH*0.88);
+  tower(castleX + castleW*0.22, castleW*0.16, baseH*1.05);
+  tower(castleX + castleW*0.48, castleW*0.14, baseH*0.92);
+  tower(castleX + castleW*0.72, castleW*0.18, baseH*1.10);
+
+  // central spire
+  ctx.beginPath();
+  ctx.moveTo(castleX + castleW*0.38, baseY - baseH*1.18);
+  ctx.lineTo(castleX + castleW*0.44, baseY - baseH*1.48);
+  ctx.lineTo(castleX + castleW*0.50, baseY - baseH*1.18);
+  ctx.closePath();
+  ctx.fill();
+
+  // arches
+  ctx.fillStyle = "rgba(0,0,0,0.70)";
+  for(let i=0;i<7;i++){
+    const ax = castleX + castleW*(0.08 + i*0.12);
+    const ay = baseY + baseH*0.52;
+    const ar = castleW*0.035;
+    ctx.beginPath();
+    ctx.arc(ax, ay, ar, Math.PI, 0);
+    ctx.lineTo(ax+ar, ay+ar*1.7);
+    ctx.lineTo(ax-ar, ay+ar*1.7);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // windows glow
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for(let i=0;i<26;i++){
+    const wx = castleX + Math.random()*castleW;
+    const wy = baseY - Math.random()*baseH*0.6 + baseH*0.2;
+    const ww = 3 + Math.random()*5;
+    const wh = 6 + Math.random()*9;
+    ctx.fillStyle = "rgba(215,181,109,0.10)";
+    ctx.fillRect(wx, wy, ww, wh);
+
+    // soft glow
+    const gg = ctx.createRadialGradient(wx, wy, 2, wx, wy, 22);
+    gg.addColorStop(0, "rgba(215,181,109,0.08)");
+    gg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = gg;
+    ctx.fillRect(wx-22, wy-22, 44, 44);
+  }
+  ctx.restore();
+
+  // ---- fog layers ----
+  const fogY = horizonY + canvas.height*0.22;
+  for(let i=0;i<6;i++){
+    const y = fogY + i*18 + 10*Math.sin(nowMs/2200 + i);
+    const w = canvas.width*(0.55 + i*0.08);
+    const h = 46 + i*10;
+    const x = canvas.width*0.5 + px*(0.6 + i*0.08);
+    ctx.fillStyle = `rgba(255,245,220,${0.018 + i*0.004})`;
+    ctx.beginPath();
+    ctx.ellipse(x, y, w, h, 0, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+
 function resizeToVideo(){
   const w = video.videoWidth || 1280;
   const h = video.videoHeight || 720;
@@ -440,8 +613,11 @@ function drawBeams(nowMs){
 }
 
 // -------------------- Rendering (3D-ish) --------------------
-function drawBackdrop(){
-  // arcane vignette
+function drawBackdrop(nowMs){
+  // 先畫城堡背景（會疊在 webcam 上，保留手部可見）
+  drawCastleBackdrop(nowMs);
+
+  // 原本的 vignette / runes 繼續保留
   const g = ctx.createRadialGradient(
     canvas.width*0.5, canvas.height*0.35, 40,
     canvas.width*0.5, canvas.height*0.6, Math.max(canvas.width, canvas.height)*0.78
@@ -452,7 +628,7 @@ function drawBackdrop(){
   ctx.fillStyle = g;
   ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  // subtle floor runes (fake depth)
+  // 你原本那段「地面符文圈」也可以留著（可選）
   ctx.save();
   ctx.globalAlpha = 0.16;
   ctx.strokeStyle = "rgba(215,181,109,0.45)";
@@ -465,6 +641,7 @@ function drawBackdrop(){
   }
   ctx.restore();
 }
+
 
 function drawMonsterBody(p2, radiusPx, isBoss=false){
   ctx.save();
@@ -667,7 +844,7 @@ async function loop(nowMs){
   }
 
   // render
-  drawBackdrop();
+  drawBackdrop(nowMs);
   drawEnemies();
   drawBeams(nowMs);
   drawParticles();
