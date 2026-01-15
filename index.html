@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Arcane Beam — Hand Magic</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+
+<body>
+
+  <header class="topbar">
+    <div class="brand">ARCANE BEAM</div>
+
+    <div class="hud">
+      <div class="hud-item">Score: <span id="score">0</span></div>
+      <div class="hud-item">Combo: <span id="combo">x1.00</span></div>
+      <div class="hud-item">Streak: <span id="streak">0</span></div>
+      <div class="hud-item">HP: <span id="hp">10</span></div>
+    </div>
+
+    <div class="bossbar" id="bossbar" hidden>
+      <div class="bossname" id="bossname">BOSS — Wyrm of Ash</div>
+      <div class="bossmeter">
+        <div class="bossfill" id="bossfill"></div>
+      </div>
+    </div>
+  </header>
+
+
+  <main class="stage">
+    <div class="frame">
+      <!-- webcam (selfie) -->
+      <video id="video" playsinline autoplay muted></video>
+      <!-- game rendering -->
+      <canvas id="canvas"></canvas>
+
+      <div class="overlay">
+        <div class="panel">
+          <div class="title">中古歐洲魔法試煉</div>
+          <div class="desc">
+            允許相機後，把雙手伸到鏡頭前。<br/>
+            你只要<strong>往鏡頭「向前揮」</strong>就會發射魔法光束。
+          </div>
+          <div class="row">
+            <button id="btnStart">Enable Camera & Start</button>
+            <button id="btnPause" disabled>Pause</button>
+            <button id="btnReset" disabled>Reset</button>
+          </div>
+          <div class="hint" id="hint"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    Tip：相機通常需要 <strong>https</strong> 或 <strong>localhost</strong> 才能啟用。
+  </footer>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
