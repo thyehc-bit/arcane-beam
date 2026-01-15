@@ -77,129 +77,183 @@ const cam = {
 };
 
 // ---- Castle background (procedural) ----
+// ---- Castle background (multi-layer parallax) ----
 const bg = {
   ready: false,
   stars: [],
+  embers: [],
+  flags: [],
   parallaxX: 0,
 };
 
 function initCastleBg(){
-  // stars in normalized space (0..1)
-  bg.stars = Array.from({ length: 160 }, () => ({
+  // stars (upper sky)
+  bg.stars = Array.from({ length: 220 }, () => ({
     x: Math.random(),
-    y: Math.random()*0.62,       // upper sky area
-    r: 0.5 + Math.random()*1.6,
-    a: 0.25 + Math.random()*0.55,
-    tw: Math.random()*Math.PI*2,
-    tws: 0.6 + Math.random()*1.6
+    y: Math.random() * 0.62,
+    r: 0.4 + Math.random() * 1.8,
+    a: 0.18 + Math.random() * 0.55,
+    tw: Math.random() * Math.PI * 2,
+    tws: 0.6 + Math.random() * 1.9
   }));
+
+  // embers (floating sparks) in screen-space normalized
+  bg.embers = Array.from({ length: 90 }, () => ({
+    x: Math.random(),
+    y: 0.55 + Math.random() * 0.55,
+    vy: 0.03 + Math.random() * 0.08,
+    vx: (Math.random() * 2 - 1) * 0.015,
+    r: 0.6 + Math.random() * 1.6,
+    a: 0.04 + Math.random() * 0.12,
+    ph: Math.random() * Math.PI * 2
+  }));
+
+  // flags (hang from towers): store phases so each waves differently
+  bg.flags = Array.from({ length: 5 }, () => ({
+    ph: Math.random() * Math.PI * 2,
+    sp: 0.9 + Math.random() * 0.9
+  }));
+
   bg.ready = true;
 }
 
 function drawCastleBackdrop(nowMs){
   if(!bg.ready) initCastleBg();
 
-  // --- parallax from hands (uses handState.*.lastPalm2D if present) ---
+  // --- Parallax driver from hands (0..1) ---
   let sumX = 0, n = 0;
   for(const k of ["Left","Right"]){
     const p = handState[k]?.lastPalm2D;
     if(p){ sumX += p.x; n++; }
   }
-  const avgX = n ? (sumX/n) : 0.5;                 // 0..1
-  const target = (avgX - 0.5) * 50;                // px
+  const avgX = n ? (sumX/n) : 0.5;
+  const target = (avgX - 0.5) * 60;            // px
   bg.parallaxX = bg.parallaxX + (target - bg.parallaxX) * 0.06;
 
   const px = bg.parallaxX;
 
-  // ---- dim webcam a bit so castle reads ----
+  // Layer parallax multipliers (遠->近)
+  const parSky = px * 0.10;
+  const parMount = px * 0.18;
+  const parCastle = px * 0.35;
+  const parFore = px * 0.70;
+
+  const W = canvas.width;
+  const H = canvas.height;
+  const horizonY = H * cam.horizon;
+
+  // 0) dim webcam slightly so background reads
   ctx.save();
-  ctx.fillStyle = "rgba(0,0,0,0.28)";
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = "rgba(0,0,0,0.26)";
+  ctx.fillRect(0,0,W,H);
 
-  // ---- sky gradient ----
-  const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  sky.addColorStop(0, "rgba(16, 24, 40, 0.62)");
-  sky.addColorStop(0.45, "rgba(8, 12, 18, 0.40)");
-  sky.addColorStop(1, "rgba(0, 0, 0, 0.22)");
+  // 1) SKY gradient
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, "rgba(18, 28, 50, 0.70)");
+  sky.addColorStop(0.45, "rgba(10, 14, 20, 0.45)");
+  sky.addColorStop(1, "rgba(0, 0, 0, 0.25)");
   ctx.fillStyle = sky;
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillRect(0,0,W,H);
 
-  // ---- moon glow ----
-  const mx = canvas.width * 0.78 + px*0.2;
-  const my = canvas.height * 0.22;
-  const mg = ctx.createRadialGradient(mx, my, 10, mx, my, canvas.height*0.34);
+  // 2) Moon + glow (far layer)
+  const mx = W * 0.78 + parSky;
+  const my = H * 0.22;
+  const mg = ctx.createRadialGradient(mx, my, 12, mx, my, H*0.38);
   mg.addColorStop(0, "rgba(255,245,220,0.16)");
   mg.addColorStop(0.35, "rgba(215,181,109,0.10)");
   mg.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = mg;
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillRect(0,0,W,H);
 
   ctx.beginPath();
   ctx.fillStyle = "rgba(255,245,220,0.12)";
-  ctx.arc(mx, my, Math.min(canvas.width,canvas.height)*0.06, 0, Math.PI*2);
+  ctx.arc(mx, my, Math.min(W,H)*0.06, 0, Math.PI*2);
   ctx.fill();
 
-  // ---- stars (twinkle) ----
+  // 3) Stars (twinkle)
   for(const s of bg.stars){
     const tw = 0.55 + 0.45*Math.sin(nowMs/1000*s.tws + s.tw);
-    const x = (s.x*canvas.width) + px*0.15;
-    const y = (s.y*canvas.height);
+    const x = (s.x*W) + parSky;
+    const y = (s.y*H);
     ctx.fillStyle = `rgba(255,245,220,${s.a*tw})`;
     ctx.beginPath();
     ctx.arc(x, y, s.r, 0, Math.PI*2);
     ctx.fill();
   }
 
-  // ---- distant mountains ----
-  const horizonY = canvas.height * cam.horizon;
-  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  // Helper: draw a soft fog ellipse
+  const fogEllipse = (x,y,rx,ry,a)=>{
+    ctx.fillStyle = `rgba(255,245,220,${a})`;
+    ctx.beginPath();
+    ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2);
+    ctx.fill();
+  };
+
+  // 4) FAR MOUNTAINS (layer 1)
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.30)";
   ctx.beginPath();
-  ctx.moveTo(0, horizonY + canvas.height*0.08);
-  for(let i=0;i<=14;i++){
-    const t = i/14;
-    const x = t*canvas.width + px*0.08;
-    const y = horizonY + canvas.height*(0.07 + 0.03*Math.sin(t*10 + nowMs/4000));
+  ctx.moveTo(-80 + parMount, horizonY + H*0.08);
+  for(let i=0;i<=18;i++){
+    const t = i/18;
+    const x = t*W + parMount;
+    const y = horizonY + H*(0.08 + 0.05*Math.sin(t*9.5 + nowMs/5000) + 0.02*Math.sin(t*21 + 1.3));
     ctx.lineTo(x,y);
   }
-  ctx.lineTo(canvas.width, canvas.height);
-  ctx.lineTo(0, canvas.height);
+  ctx.lineTo(W+120 + parMount, H);
+  ctx.lineTo(-120 + parMount, H);
   ctx.closePath();
   ctx.fill();
+  ctx.restore();
 
-  // ---- castle silhouette ----
-  const baseY = horizonY + canvas.height*0.12;
-  const baseH = canvas.height*0.34;
-  const castleW = canvas.width*0.62;
-  const castleX = canvas.width*0.19 + px*0.35;
+  // 5) MID FOG bands (behind castle)
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for(let i=0;i<5;i++){
+    const y = horizonY + H*(0.16 + i*0.05) + 10*Math.sin(nowMs/2600 + i*0.7);
+    fogEllipse(W*0.45 + parMount*(0.8+i*0.15), y, W*(0.45+i*0.06), 34+i*10, 0.010 + i*0.004);
+  }
+  ctx.restore();
 
-  ctx.fillStyle = "rgba(0,0,0,0.62)";
-  // main wall
+  // 6) CASTLE silhouette (layer 2)
+  const baseY = horizonY + H*0.11;
+  const baseH = H*0.34;
+  const castleW = W*0.64;
+  const castleX = W*0.18 + parCastle;
+
+  // main body
+  ctx.fillStyle = "rgba(0,0,0,0.64)";
   ctx.fillRect(castleX, baseY, castleW, baseH);
 
-  // towers
+  // towers helper
   const tower = (x, w, h) => {
     ctx.fillRect(x, baseY - h, w, h);
-    // crenellation
     const step = w/6;
     for(let i=0;i<6;i++){
       if(i%2===0) ctx.fillRect(x+i*step, baseY - h - 10, step, 10);
     }
   };
-  tower(castleX + castleW*0.02, castleW*0.12, baseH*0.88);
-  tower(castleX + castleW*0.22, castleW*0.16, baseH*1.05);
-  tower(castleX + castleW*0.48, castleW*0.14, baseH*0.92);
-  tower(castleX + castleW*0.72, castleW*0.18, baseH*1.10);
+
+  const t1x = castleX + castleW*0.02;
+  const t2x = castleX + castleW*0.22;
+  const t3x = castleX + castleW*0.48;
+  const t4x = castleX + castleW*0.72;
+
+  tower(t1x, castleW*0.12, baseH*0.88);
+  tower(t2x, castleW*0.16, baseH*1.05);
+  tower(t3x, castleW*0.14, baseH*0.92);
+  tower(t4x, castleW*0.18, baseH*1.10);
 
   // central spire
   ctx.beginPath();
   ctx.moveTo(castleX + castleW*0.38, baseY - baseH*1.18);
-  ctx.lineTo(castleX + castleW*0.44, baseY - baseH*1.48);
+  ctx.lineTo(castleX + castleW*0.44, baseY - baseH*1.55);
   ctx.lineTo(castleX + castleW*0.50, baseY - baseH*1.18);
   ctx.closePath();
   ctx.fill();
 
-  // arches
-  ctx.fillStyle = "rgba(0,0,0,0.70)";
+  // arches (dark)
+  ctx.fillStyle = "rgba(0,0,0,0.72)";
   for(let i=0;i<7;i++){
     const ax = castleX + castleW*(0.08 + i*0.12);
     const ay = baseY + baseH*0.52;
@@ -212,40 +266,173 @@ function drawCastleBackdrop(nowMs){
     ctx.fill();
   }
 
-  // windows glow
+  // window glows
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  for(let i=0;i<26;i++){
+  for(let i=0;i<36;i++){
     const wx = castleX + Math.random()*castleW;
-    const wy = baseY - Math.random()*baseH*0.6 + baseH*0.2;
-    const ww = 3 + Math.random()*5;
-    const wh = 6 + Math.random()*9;
-    ctx.fillStyle = "rgba(215,181,109,0.10)";
+    const wy = baseY - Math.random()*baseH*0.65 + baseH*0.22;
+    const ww = 3 + Math.random()*6;
+    const wh = 6 + Math.random()*10;
+    ctx.fillStyle = "rgba(215,181,109,0.09)";
     ctx.fillRect(wx, wy, ww, wh);
 
-    // soft glow
-    const gg = ctx.createRadialGradient(wx, wy, 2, wx, wy, 22);
-    gg.addColorStop(0, "rgba(215,181,109,0.08)");
+    const gg = ctx.createRadialGradient(wx, wy, 2, wx, wy, 20);
+    gg.addColorStop(0, "rgba(215,181,109,0.07)");
     gg.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = gg;
-    ctx.fillRect(wx-22, wy-22, 44, 44);
+    ctx.fillRect(wx-20, wy-20, 40, 40);
   }
   ctx.restore();
 
-  // ---- fog layers ----
-  const fogY = horizonY + canvas.height*0.22;
-  for(let i=0;i<6;i++){
-    const y = fogY + i*18 + 10*Math.sin(nowMs/2200 + i);
-    const w = canvas.width*(0.55 + i*0.08);
-    const h = 46 + i*10;
-    const x = canvas.width*0.5 + px*(0.6 + i*0.08);
-    ctx.fillStyle = `rgba(255,245,220,${0.018 + i*0.004})`;
+  // 7) FLAGS (attached to tower tops; waves)
+  const flagPoints = [
+    { x: t1x + castleW*0.06, y: baseY - baseH*0.88 },
+    { x: t2x + castleW*0.08, y: baseY - baseH*1.05 },
+    { x: t3x + castleW*0.07, y: baseY - baseH*0.92 },
+    { x: t4x + castleW*0.10, y: baseY - baseH*1.10 },
+    { x: castleX + castleW*0.44, y: baseY - baseH*1.55 },
+  ];
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for(let i=0;i<flagPoints.length;i++){
+    const fp = flagPoints[i];
+    const f = bg.flags[i % bg.flags.length];
+    const wind = Math.sin(nowMs/600 * f.sp + f.ph);
+    const wind2 = Math.sin(nowMs/280 * (0.7+f.sp*0.3) + f.ph*1.7);
+
+    // pole
+    ctx.strokeStyle = "rgba(215,181,109,0.10)";
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.ellipse(x, y, w, h, 0, 0, Math.PI*2);
-    ctx.fill();
-  }
+    ctx.moveTo(fp.x, fp.y);
+    ctx.lineTo(fp.x, fp.y + 34);
+    ctx.stroke();
 
+    // flag cloth (bezier wave)
+    const len = 34;
+    const h = 14;
+    const dx = 10 + wind*10 + wind2*6;
+    const dy = 2 + wind2*3;
+
+    ctx.fillStyle = "rgba(255,92,92,0.10)";
+    ctx.beginPath();
+    ctx.moveTo(fp.x, fp.y);
+    ctx.bezierCurveTo(fp.x+dx*0.4, fp.y+dy*0.2, fp.x+dx*0.8, fp.y+h*0.6, fp.x+dx, fp.y+h);
+    ctx.bezierCurveTo(fp.x+dx*0.75, fp.y+h*1.05, fp.x+dx*0.35, fp.y+h*0.95, fp.x, fp.y+h*0.85);
+    ctx.closePath();
+    ctx.fill();
+
+    // edge highlight
+    ctx.strokeStyle = "rgba(215,181,109,0.10)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(fp.x, fp.y);
+    ctx.bezierCurveTo(fp.x+dx*0.4, fp.y+dy*0.2, fp.x+dx*0.8, fp.y+h*0.6, fp.x+dx, fp.y+h);
+    ctx.stroke();
+  }
   ctx.restore();
+
+  // 8) FRONT FOG (in front of castle)
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for(let i=0;i<7;i++){
+    const y = horizonY + H*(0.26 + i*0.045) + 12*Math.sin(nowMs/2200 + i*0.8);
+    fogEllipse(W*0.52 + parCastle*(1.0+i*0.10), y, W*(0.52+i*0.07), 46+i*12, 0.012 + i*0.004);
+  }
+  ctx.restore();
+
+  // 9) FOREGROUND ARCH (layer 3) — big parallax, adds depth
+  ctx.save();
+  ctx.translate(parFore, 0);
+
+  const archY = horizonY + H*0.03;
+  const archW = W*1.18;
+  const archH = H*0.95;
+
+  // stone frame
+  ctx.fillStyle = "rgba(0,0,0,0.50)";
+  ctx.fillRect(-W*0.09, archY, archW, archH);
+
+  // inner opening (cutout) by drawing with destination-out
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.beginPath();
+  ctx.ellipse(W*0.50, H*0.68, W*0.45, H*0.55, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // back to normal and add subtle rune glow on arch
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 0.9;
+
+  // arch edge glow
+  ctx.strokeStyle = "rgba(215,181,109,0.12)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(W*0.50, H*0.68, W*0.45, H*0.55, 0, 0, Math.PI*2);
+  ctx.stroke();
+
+  // runes
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = "rgba(215,181,109,0.08)";
+  for(let i=0;i<22;i++){
+    const t = i/22 * Math.PI*2;
+    const rx = W*0.45;
+    const ry = H*0.55;
+    const x = W*0.50 + Math.cos(t)*rx;
+    const y = H*0.68 + Math.sin(t)*ry;
+    const w = 4 + Math.random()*6;
+    const h2 = 10 + Math.random()*16;
+    ctx.fillRect(x - w/2, y - h2/2, w, h2);
+  }
+  ctx.restore();
+
+  ctx.restore(); // end foreground arch layer
+
+  // 10) Floating embers (foreground-ish, light)
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for(const e of bg.embers){
+    // drift
+    const sway = Math.sin(nowMs/900 + e.ph) * 0.006;
+    e.y -= e.vy * (1/60);
+    e.x += (e.vx + sway) * (1/60);
+
+    // wrap
+    if(e.y < -0.05){ e.y = 1.05; e.x = Math.random(); }
+    if(e.x < -0.05) e.x = 1.05;
+    if(e.x > 1.05) e.x = -0.05;
+
+    const ex = e.x*W + parFore*0.25;
+    const ey = e.y*H;
+    const tw = 0.6 + 0.4*Math.sin(nowMs/500 + e.ph);
+    const a = e.a * tw;
+
+    ctx.fillStyle = `rgba(255,245,220,${a})`;
+    ctx.beginPath();
+    ctx.arc(ex, ey, e.r, 0, Math.PI*2);
+    ctx.fill();
+
+    // tiny streak
+    ctx.strokeStyle = `rgba(215,181,109,${a*0.7})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex + (Math.random()*2-1)*8, ey - 10 - Math.random()*18);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // 11) Final subtle vignette to unify
+  const vg = ctx.createRadialGradient(W*0.5, H*0.55, 40, W*0.5, H*0.6, Math.max(W,H)*0.85);
+  vg.addColorStop(0, "rgba(0,0,0,0)");
+  vg.addColorStop(0.65, "rgba(0,0,0,0.08)");
+  vg.addColorStop(1, "rgba(0,0,0,0.35)");
+  ctx.fillStyle = vg;
+  ctx.fillRect(0,0,W,H);
+
+  ctx.restore(); // end full backdrop
 }
 
 
