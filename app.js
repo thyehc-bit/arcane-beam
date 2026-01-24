@@ -601,10 +601,10 @@ function drawBeams(nowMs){
     const pulse = 0.92 + 0.18 * Math.sin(nowMs/55 + b.ax*10);
 
     // === 你可以在這裡調整「粗細」 ===
-    const OUTER_W1 = 176000 * s * pulse;   // 外圈大光暈（最粗）
-    const OUTER_W2 = 150000 * s * pulse;   // 外圈小光暈
-    const CORE_W   =  65000 * s * pulse;   // 內核（最亮）
-    const HOT_W    =  18000 * s * pulse;   // 中間熱核（最白）
+    const OUTER_W1 = 17600 * s * pulse;   // 外圈大光暈（最粗）
+    const OUTER_W2 = 15000 * s * pulse;   // 外圈小光暈
+    const CORE_W   =  6500 * s * pulse;   // 內核（最亮）
+    const HOT_W    =  1800 * s * pulse;   // 中間熱核（最白）
 
     // 讓光束本身沿著方向有些微漸層（更像能量）
     const grad = ctx.createLinearGradient(a2.x,a2.y,b2.x,b2.y);
