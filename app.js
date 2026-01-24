@@ -20,14 +20,18 @@ const ctx = canvas.getContext("2d");
 
 // ---- Image background (castle) ----
 const castleImg = new Image();
-castleImg.src = "./castle_bg.jpg";  // 如果你用 jpg，就改成 "./castle_bg.jpg"
+castleImg.src = "./castle_bg.jpg?v=2";  // cache bust
 let castleReady = false;
 
-castleImg.onload = () => { castleReady = true; };
+castleImg.onload = () => { 
+  castleReady = true; 
+  console.log("castle bg loaded:", castleImg.naturalWidth, castleImg.naturalHeight);
+};
 castleImg.onerror = () => {
   console.warn("Failed to load castle background image:", castleImg.src);
   castleReady = false;
 };
+
 
 // -------------------- MediaPipe --------------------
 let landmarker = null;
