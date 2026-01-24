@@ -636,12 +636,14 @@ function castBeam3D(from3, nowMs){
     }
   }
 
+  // default beam direction if no target
   let to3 = { x: from3.x, y: from3.y - 0.25, z: from3.z + 1.8 };
   if(best){
     // aim slightly behind the target to look "piercing"
     to3 = { x: best.x, y: best.y, z: best.z + 0.08 };
   }
 
+  // create beam visual
   beams.push({
     ax: from3.x, ay: from3.y, az: from3.z,
     bx: to3.x,   by: to3.y,   bz: to3.z,
@@ -649,54 +651,52 @@ function castBeam3D(from3, nowMs){
     ttl: 138,
   });
 
-  // HIT logic: immediate hit for nearest target (arcade style)
-  if(best){
-    if(best.type === "boss"){
-	best.hp -= 1;
-	score += Math.floor(10 * combo);
-	sfx.hit();
-
-	const died = best.hp <= 0;
-	const hp2 = project3D(best);
-
-	if(died){
- 	 // 怪物死亡：紫金火花爆裂
- 	 spawnSparksPurpleGold(hp2.x, hp2.y, 1.0);
-	} else {
-  	// 沒死：小量火花（你要也可以留白）
- 	 spawnParticles2D(hp2.x, hp2.y, 18, 0.9, PALETTE_PURPLE_GOLD, { ttlMin:0.18, ttlMax:0.35, speedMin:80, speedMax:220 });
-	}
-    }else{
-      best.hp -= 1;
-      score += Math.floor(10 * combo);
-      sfx.hit();
-    }
-
-    // combo increase (hit window)
-    streak += 1;
-    combo = clamp(combo + COMBO_STEP, 1, COMBO_MAX);
-    lastHitMs = nowMs;
-
-    // particles at hit point in screen space
-    const hp2 = project3D(best);
-    spawnParticles2D(hp2.x, hp2.y, best.type==="boss" ? 34 : 24, best.type==="boss" ? 1.2 : 1.0);
-  }else{
-  best.hp -= 1;
-  score += Math.floor(10 * combo);
-  sfx.hit();
-
-  const hp2 = project3D(best);
-  const died = best.hp <= 0;
-
-  if(died){
-    // 小怪死亡：紫金火花爆裂
-    spawnSparksPurpleGold(hp2.x, hp2.y, 1.0);
-  }else{
-    // 小怪未死：少量紫金火花
-    spawnParticles2D(hp2.x, hp2.y, 18, 0.9, PALETTE_PURPLE_GOLD, {
-      ttlMin: 0.18, ttlMax: 0.35, speedMin: 80, speedMax: 220
-    });
+  // Miss: still cast SFX if you want
+  if(!best){
+    sfx.cast();
+    return;
   }
+
+  // Hit logic
+  if(best.type === "boss"){
+    best.hp -= 1;
+    score += Math.floor(10 * combo);
+    sfx.bossHit();
+
+    // boss hit: small ash/ember puff (not the big death burst; that is in updateBoss)
+    const p2 = project3D(best);
+    spawnParticles2D(p2.x, p2.y, 16, 0.9, PALETTE_ASH, {
+      ttlMin: 0.20, ttlMax: 0.45,
+      speedMin: 60, speedMax: 180,
+      grav: 420
+    });
+  } else {
+    best.hp -= 1;
+    score += Math.floor(10 * combo);
+    sfx.hit();
+
+    const p2 = project3D(best);
+    const died = best.hp <= 0;
+
+    if(died){
+      // minion death: purple+gold burst
+      spawnSparksPurpleGold(p2.x, p2.y, 1.0);
+    } else {
+      // minion hit: smaller purple+gold sparks
+      spawnParticles2D(p2.x, p2.y, 18, 0.9, PALETTE_PURPLE_GOLD, {
+        ttlMin: 0.18, ttlMax: 0.35,
+        speedMin: 80, speedMax: 220
+      });
+    }
+  }
+
+  // combo / streak
+  streak += 1;
+  combo = clamp(combo + COMBO_STEP, 1, COMBO_MAX);
+  lastHitMs = nowMs;
+
+  // remove dead minions (boss removal is handled in updateBoss)
+  monsters = monsters.filter(m => m.hp > 0);
 }
 
 
