@@ -18,6 +18,17 @@ const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
+// ---- Image background (castle) ----
+const castleImg = new Image();
+castleImg.src = "./castle_bg.jpg";  // 如果你用 jpg，就改成 "./castle_bg.jpg"
+let castleReady = false;
+
+castleImg.onload = () => { castleReady = true; };
+castleImg.onerror = () => {
+  console.warn("Failed to load castle background image:", castleImg.src);
+  castleReady = false;
+};
+
 // -------------------- MediaPipe --------------------
 let landmarker = null;
 
@@ -118,7 +129,8 @@ function initCastleBg(){
 }
 
 function drawCastleBackdrop(nowMs){
-  if(!bg.ready) initCastleBg();
+  const W = canvas.width;
+  const H = canvas.height;
 
   // --- Parallax driver from hands (0..1) ---
   let sumX = 0, n = 0;
@@ -127,304 +139,96 @@ function drawCastleBackdrop(nowMs){
     if(p){ sumX += p.x; n++; }
   }
   const avgX = n ? (sumX/n) : 0.5;
-  const target = (avgX - 0.5) * 60;            // px
+  const target = (avgX - 0.5) * 70;            // px (左右視差幅度)
   bg.parallaxX = bg.parallaxX + (target - bg.parallaxX) * 0.06;
 
   const px = bg.parallaxX;
 
-  // Layer parallax multipliers (遠->近)
-  const parSky = px * 0.10;
-  const parMount = px * 0.18;
-  const parCastle = px * 0.35;
-  const parFore = px * 0.70;
-
-  const W = canvas.width;
-  const H = canvas.height;
-  const horizonY = H * cam.horizon;
-
-  // 0) dim webcam slightly so background reads
+  // 1) 先略暗化 webcam，讓背景看得出來
   ctx.save();
-  ctx.fillStyle = "rgba(0,0,0,0.26)";
+  ctx.fillStyle = "rgba(0,0,0,0.22)";
   ctx.fillRect(0,0,W,H);
 
-  // 1) SKY gradient
-  const sky = ctx.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, "rgba(18, 28, 50, 0.70)");
-  sky.addColorStop(0.45, "rgba(10, 14, 20, 0.45)");
-  sky.addColorStop(1, "rgba(0, 0, 0, 0.25)");
-  ctx.fillStyle = sky;
-  ctx.fillRect(0,0,W,H);
+  // 2) 畫圖檔背景：cover 鋪滿 + 視差
+  if(castleReady){
+    const iw = castleImg.naturalWidth || 1920;
+    const ih = castleImg.naturalHeight || 1080;
 
-  // 2) Moon + glow (far layer)
-  const mx = W * 0.78 + parSky;
+    // cover: 等比例鋪滿整個畫面
+    const scale = Math.max(W/iw, H/ih);
+    const dw = iw * scale;
+    const dh = ih * scale;
+
+    // 置中 + 視差（背景遠景：視差小）
+    const x = (W - dw) * 0.5 + px * 0.25;
+    const y = (H - dh) * 0.5;
+
+    ctx.globalAlpha = 0.70; // 背景強度：0.55~0.85 可調
+    ctx.drawImage(castleImg, x, y, dw, dh);
+    ctx.globalAlpha = 1;
+  } else {
+    // 背景圖沒載到時的保底（避免白一片）
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, "rgba(18, 28, 50, 0.70)");
+    sky.addColorStop(1, "rgba(0, 0, 0, 0.35)");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  // 3) 加一層月光/薄霧（提升魔法氛圍）
+  const mx = W * 0.78 + px*0.15;
   const my = H * 0.22;
-  const mg = ctx.createRadialGradient(mx, my, 12, mx, my, H*0.38);
+  const mg = ctx.createRadialGradient(mx, my, 10, mx, my, H*0.42);
   mg.addColorStop(0, "rgba(255,245,220,0.16)");
-  mg.addColorStop(0.35, "rgba(215,181,109,0.10)");
+  mg.addColorStop(0.40, "rgba(215,181,109,0.10)");
   mg.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = mg;
   ctx.fillRect(0,0,W,H);
 
+  // 4) 前景拱門（近景視差大，強化 3D）
+  //    這裡不使用 destination-out（更穩）
+  ctx.save();
+  ctx.translate(px * 0.70, 0);
+
+  ctx.fillStyle = "rgba(0,0,0,0.36)";
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = W*0.50, cy = H*0.68;
+  const rx = W*0.45, ry = H*0.55;
+
+  // 讓拱門內側相對亮一點，看起來像洞口
+  ctx.globalCompositeOperation = "lighter";
+  const hole = ctx.createRadialGradient(cx, cy, 10, cx, cy, Math.max(rx,ry));
+  hole.addColorStop(0, "rgba(0,0,0,0)");
+  hole.addColorStop(0.45, "rgba(0,0,0,0)");
+  hole.addColorStop(1, "rgba(0,0,0,0.18)");
+  ctx.fillStyle = hole;
   ctx.beginPath();
-  ctx.fillStyle = "rgba(255,245,220,0.12)";
-  ctx.arc(mx, my, Math.min(W,H)*0.06, 0, Math.PI*2);
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
   ctx.fill();
 
-  // 3) Stars (twinkle)
-  for(const s of bg.stars){
-    const tw = 0.55 + 0.45*Math.sin(nowMs/1000*s.tws + s.tw);
-    const x = (s.x*W) + parSky;
-    const y = (s.y*H);
-    ctx.fillStyle = `rgba(255,245,220,${s.a*tw})`;
-    ctx.beginPath();
-    ctx.arc(x, y, s.r, 0, Math.PI*2);
-    ctx.fill();
-  }
-
-  // Helper: draw a soft fog ellipse
-  const fogEllipse = (x,y,rx,ry,a)=>{
-    ctx.fillStyle = `rgba(255,245,220,${a})`;
-    ctx.beginPath();
-    ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2);
-    ctx.fill();
-  };
-
-  // 4) FAR MOUNTAINS (layer 1)
-  ctx.save();
-  ctx.fillStyle = "rgba(0,0,0,0.30)";
-  ctx.beginPath();
-  ctx.moveTo(-80 + parMount, horizonY + H*0.08);
-  for(let i=0;i<=18;i++){
-    const t = i/18;
-    const x = t*W + parMount;
-    const y = horizonY + H*(0.08 + 0.05*Math.sin(t*9.5 + nowMs/5000) + 0.02*Math.sin(t*21 + 1.3));
-    ctx.lineTo(x,y);
-  }
-  ctx.lineTo(W+120 + parMount, H);
-  ctx.lineTo(-120 + parMount, H);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-
-  // 5) MID FOG bands (behind castle)
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  for(let i=0;i<5;i++){
-    const y = horizonY + H*(0.16 + i*0.05) + 10*Math.sin(nowMs/2600 + i*0.7);
-    fogEllipse(W*0.45 + parMount*(0.8+i*0.15), y, W*(0.45+i*0.06), 34+i*10, 0.010 + i*0.004);
-  }
-  ctx.restore();
-
-  // 6) CASTLE silhouette (layer 2)
-  const baseY = horizonY + H*0.11;
-  const baseH = H*0.34;
-  const castleW = W*0.64;
-  const castleX = W*0.18 + parCastle;
-
-  // main body
-  ctx.fillStyle = "rgba(0,0,0,0.64)";
-  ctx.fillRect(castleX, baseY, castleW, baseH);
-
-  // towers helper
-  const tower = (x, w, h) => {
-    ctx.fillRect(x, baseY - h, w, h);
-    const step = w/6;
-    for(let i=0;i<6;i++){
-      if(i%2===0) ctx.fillRect(x+i*step, baseY - h - 10, step, 10);
-    }
-  };
-
-  const t1x = castleX + castleW*0.02;
-  const t2x = castleX + castleW*0.22;
-  const t3x = castleX + castleW*0.48;
-  const t4x = castleX + castleW*0.72;
-
-  tower(t1x, castleW*0.12, baseH*0.88);
-  tower(t2x, castleW*0.16, baseH*1.05);
-  tower(t3x, castleW*0.14, baseH*0.92);
-  tower(t4x, castleW*0.18, baseH*1.10);
-
-  // central spire
-  ctx.beginPath();
-  ctx.moveTo(castleX + castleW*0.38, baseY - baseH*1.18);
-  ctx.lineTo(castleX + castleW*0.44, baseY - baseH*1.55);
-  ctx.lineTo(castleX + castleW*0.50, baseY - baseH*1.18);
-  ctx.closePath();
-  ctx.fill();
-
-  // arches (dark)
-  ctx.fillStyle = "rgba(0,0,0,0.72)";
-  for(let i=0;i<7;i++){
-    const ax = castleX + castleW*(0.08 + i*0.12);
-    const ay = baseY + baseH*0.52;
-    const ar = castleW*0.035;
-    ctx.beginPath();
-    ctx.arc(ax, ay, ar, Math.PI, 0);
-    ctx.lineTo(ax+ar, ay+ar*1.7);
-    ctx.lineTo(ax-ar, ay+ar*1.7);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  // window glows
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  for(let i=0;i<36;i++){
-    const wx = castleX + Math.random()*castleW;
-    const wy = baseY - Math.random()*baseH*0.65 + baseH*0.22;
-    const ww = 3 + Math.random()*6;
-    const wh = 6 + Math.random()*10;
-    ctx.fillStyle = "rgba(215,181,109,0.09)";
-    ctx.fillRect(wx, wy, ww, wh);
-
-    const gg = ctx.createRadialGradient(wx, wy, 2, wx, wy, 20);
-    gg.addColorStop(0, "rgba(215,181,109,0.07)");
-    gg.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = gg;
-    ctx.fillRect(wx-20, wy-20, 40, 40);
-  }
-  ctx.restore();
-
-  // 7) FLAGS (attached to tower tops; waves)
-  const flagPoints = [
-    { x: t1x + castleW*0.06, y: baseY - baseH*0.88 },
-    { x: t2x + castleW*0.08, y: baseY - baseH*1.05 },
-    { x: t3x + castleW*0.07, y: baseY - baseH*0.92 },
-    { x: t4x + castleW*0.10, y: baseY - baseH*1.10 },
-    { x: castleX + castleW*0.44, y: baseY - baseH*1.55 },
-  ];
-
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  for(let i=0;i<flagPoints.length;i++){
-    const fp = flagPoints[i];
-    const f = bg.flags[i % bg.flags.length];
-    const wind = Math.sin(nowMs/600 * f.sp + f.ph);
-    const wind2 = Math.sin(nowMs/280 * (0.7+f.sp*0.3) + f.ph*1.7);
-
-    // pole
-    ctx.strokeStyle = "rgba(215,181,109,0.10)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(fp.x, fp.y);
-    ctx.lineTo(fp.x, fp.y + 34);
-    ctx.stroke();
-
-    // flag cloth (bezier wave)
-    const len = 34;
-    const h = 14;
-    const dx = 10 + wind*10 + wind2*6;
-    const dy = 2 + wind2*3;
-
-    ctx.fillStyle = "rgba(255,92,92,0.10)";
-    ctx.beginPath();
-    ctx.moveTo(fp.x, fp.y);
-    ctx.bezierCurveTo(fp.x+dx*0.4, fp.y+dy*0.2, fp.x+dx*0.8, fp.y+h*0.6, fp.x+dx, fp.y+h);
-    ctx.bezierCurveTo(fp.x+dx*0.75, fp.y+h*1.05, fp.x+dx*0.35, fp.y+h*0.95, fp.x, fp.y+h*0.85);
-    ctx.closePath();
-    ctx.fill();
-
-    // edge highlight
-    ctx.strokeStyle = "rgba(215,181,109,0.10)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(fp.x, fp.y);
-    ctx.bezierCurveTo(fp.x+dx*0.4, fp.y+dy*0.2, fp.x+dx*0.8, fp.y+h*0.6, fp.x+dx, fp.y+h);
-    ctx.stroke();
-  }
-  ctx.restore();
-
-  // 8) FRONT FOG (in front of castle)
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  for(let i=0;i<7;i++){
-    const y = horizonY + H*(0.26 + i*0.045) + 12*Math.sin(nowMs/2200 + i*0.8);
-    fogEllipse(W*0.52 + parCastle*(1.0+i*0.10), y, W*(0.52+i*0.07), 46+i*12, 0.012 + i*0.004);
-  }
-  ctx.restore();
-
-  // 9) FOREGROUND ARCH (layer 3) — big parallax, adds depth
-  ctx.save();
-  ctx.translate(parFore, 0);
-
-  const archY = horizonY + H*0.03;
-  const archW = W*1.18;
-  const archH = H*0.95;
-
-  // stone frame
-  ctx.fillStyle = "rgba(0,0,0,0.50)";
-  ctx.fillRect(-W*0.09, archY, archW, archH);
-
-  // inner opening (cutout) by drawing with destination-out
-  ctx.globalCompositeOperation = "destination-out";
-  ctx.beginPath();
-  ctx.ellipse(W*0.50, H*0.68, W*0.45, H*0.55, 0, 0, Math.PI*2);
-  ctx.fill();
-
-  // back to normal and add subtle rune glow on arch
   ctx.globalCompositeOperation = "source-over";
-  ctx.globalAlpha = 0.9;
-
-  // arch edge glow
-  ctx.strokeStyle = "rgba(215,181,109,0.12)";
+  ctx.strokeStyle = "rgba(215,181,109,0.14)";
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.ellipse(W*0.50, H*0.68, W*0.45, H*0.55, 0, 0, Math.PI*2);
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
   ctx.stroke();
 
-  // runes
+  // 簡單符文點綴
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  ctx.fillStyle = "rgba(215,181,109,0.08)";
-  for(let i=0;i<22;i++){
-    const t = i/22 * Math.PI*2;
-    const rx = W*0.45;
-    const ry = H*0.55;
-    const x = W*0.50 + Math.cos(t)*rx;
-    const y = H*0.68 + Math.sin(t)*ry;
-    const w = 4 + Math.random()*6;
-    const h2 = 10 + Math.random()*16;
-    ctx.fillRect(x - w/2, y - h2/2, w, h2);
+  ctx.fillStyle = "rgba(215,181,109,0.06)";
+  for(let i=0;i<18;i++){
+    const t = i/18 * Math.PI*2;
+    const x = cx + Math.cos(t)*rx;
+    const y = cy + Math.sin(t)*ry;
+    ctx.fillRect(x-2, y-8, 4, 16);
   }
   ctx.restore();
 
-  ctx.restore(); // end foreground arch layer
+  ctx.restore(); // end arch
 
-  // 10) Floating embers (foreground-ish, light)
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  for(const e of bg.embers){
-    // drift
-    const sway = Math.sin(nowMs/900 + e.ph) * 0.006;
-    e.y -= e.vy * (1/60);
-    e.x += (e.vx + sway) * (1/60);
-
-    // wrap
-    if(e.y < -0.05){ e.y = 1.05; e.x = Math.random(); }
-    if(e.x < -0.05) e.x = 1.05;
-    if(e.x > 1.05) e.x = -0.05;
-
-    const ex = e.x*W + parFore*0.25;
-    const ey = e.y*H;
-    const tw = 0.6 + 0.4*Math.sin(nowMs/500 + e.ph);
-    const a = e.a * tw;
-
-    ctx.fillStyle = `rgba(255,245,220,${a})`;
-    ctx.beginPath();
-    ctx.arc(ex, ey, e.r, 0, Math.PI*2);
-    ctx.fill();
-
-    // tiny streak
-    ctx.strokeStyle = `rgba(215,181,109,${a*0.7})`;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(ex, ey);
-    ctx.lineTo(ex + (Math.random()*2-1)*8, ey - 10 - Math.random()*18);
-    ctx.stroke();
-  }
-  ctx.restore();
-
-  // 11) Final subtle vignette to unify
+  // 5) 統一 vignette（防止看起來太平）
   const vg = ctx.createRadialGradient(W*0.5, H*0.55, 40, W*0.5, H*0.6, Math.max(W,H)*0.85);
   vg.addColorStop(0, "rgba(0,0,0,0)");
   vg.addColorStop(0.65, "rgba(0,0,0,0.08)");
@@ -432,7 +236,11 @@ function drawCastleBackdrop(nowMs){
   ctx.fillStyle = vg;
   ctx.fillRect(0,0,W,H);
 
-  ctx.restore(); // end full backdrop
+  ctx.restore();
+
+  // 保險：避免 composite/alpha 殘留影響後續渲染
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
 }
 
 
