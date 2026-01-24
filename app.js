@@ -180,14 +180,14 @@ function drawCastleBackdrop(nowMs){
   }
 
   // 3) 加一層月光/薄霧（提升魔法氛圍）
-  const mx = W * 0.78 + px*0.15;
-  const my = H * 0.22;
-  const mg = ctx.createRadialGradient(mx, my, 10, mx, my, H*0.42);
-  mg.addColorStop(0, "rgba(255,245,220,0.16)");
-  mg.addColorStop(0.40, "rgba(215,181,109,0.10)");
-  mg.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = mg;
-  ctx.fillRect(0,0,W,H);
+  //const mx = W * 0.78 + px*0.15;
+  //const my = H * 0.22;
+  //const mg = ctx.createRadialGradient(mx, my, 10, mx, my, H*0.42);
+  //mg.addColorStop(0, "rgba(255,245,220,0.16)");
+  //mg.addColorStop(0.40, "rgba(215,181,109,0.10)");
+  //mg.addColorStop(1, "rgba(0,0,0,0)");
+  //ctx.fillStyle = mg;
+  //ctx.fillRect(0,0,W,H);
 
   // 4) 前景拱門（近景視差大，強化 3D）
   //    這裡不使用 destination-out（更穩）
@@ -201,22 +201,22 @@ function drawCastleBackdrop(nowMs){
   const rx = W*0.45, ry = H*0.55;
 
   // 讓拱門內側相對亮一點，看起來像洞口
-  ctx.globalCompositeOperation = "lighter";
-  const hole = ctx.createRadialGradient(cx, cy, 10, cx, cy, Math.max(rx,ry));
-  hole.addColorStop(0, "rgba(0,0,0,0)");
-  hole.addColorStop(0.45, "rgba(0,0,0,0)");
-  hole.addColorStop(1, "rgba(0,0,0,0.18)");
-  ctx.fillStyle = hole;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
-  ctx.fill();
+  //ctx.globalCompositeOperation = "lighter";
+  //const hole = ctx.createRadialGradient(cx, cy, 10, cx, cy, Math.max(rx,ry));
+  //hole.addColorStop(0, "rgba(0,0,0,0)");
+  //hole.addColorStop(0.45, "rgba(0,0,0,0)");
+  //hole.addColorStop(1, "rgba(0,0,0,0.18)");
+  //ctx.fillStyle = hole;
+  //ctx.beginPath();
+  //ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
+  //ctx.fill();
 
-  ctx.globalCompositeOperation = "source-over";
-  ctx.strokeStyle = "rgba(215,181,109,0.14)";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
-  ctx.stroke();
+  //ctx.globalCompositeOperation = "source-over";
+  //ctx.strokeStyle = "rgba(215,181,109,0.14)";
+  //ctx.lineWidth = 3;
+  //ctx.beginPath();
+  //ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
+  //ctx.stroke();
 
   // 簡單符文點綴
   ctx.save();
