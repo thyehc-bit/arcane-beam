@@ -540,7 +540,7 @@ function castBeam3D(from3, nowMs){
     ax: from3.x, ay: from3.y, az: from3.z,
     bx: to3.x,   by: to3.y,   bz: to3.z,
     born: nowMs,
-    ttl: 138000,
+    ttl: 13800,
   });
 
   // HIT logic: immediate hit for nearest target (arcade style)
