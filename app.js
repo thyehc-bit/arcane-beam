@@ -540,7 +540,7 @@ function castBeam3D(from3, nowMs){
     ax: from3.x, ay: from3.y, az: from3.z,
     bx: to3.x,   by: to3.y,   bz: to3.z,
     born: nowMs,
-    ttl: 120,
+    ttl: 180,
   });
 
   // HIT logic: immediate hit for nearest target (arcade style)
@@ -580,35 +580,82 @@ function updateBeams(nowMs){
 }
 
 function drawBeams(nowMs){
+  ctx.save();
+
+  // 讓光束用加亮混色（很關鍵：更像魔法光、會“發光”）
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
   for(const b of beams){
     const life = (nowMs - b.born)/b.ttl; // 0..1
-    const alpha = 1 - life;
+    const alpha = Math.max(0, 1 - life);
 
     const a2 = project3D({x:b.ax,y:b.ay,z:b.az});
     const b2 = project3D({x:b.bx,y:b.by,z:b.bz});
 
-    // outer glow
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+    // 避免太遠的時候縮得過細：給一個下限
+    const s = Math.max(a2.s, 0.75);
+
+    // 讓光束有一點“呼吸”的脈動
+    const pulse = 0.92 + 0.18 * Math.sin(nowMs/55 + b.ax*10);
+
+    // === 你可以在這裡調整「粗細」 ===
+    const OUTER_W1 = 42 * s * pulse;   // 外圈大光暈（最粗）
+    const OUTER_W2 = 22 * s * pulse;   // 外圈小光暈
+    const CORE_W   =  7 * s * pulse;   // 內核（最亮）
+    const HOT_W    =  3 * s * pulse;   // 中間熱核（最白）
+
+    // 讓光束本身沿著方向有些微漸層（更像能量）
+    const grad = ctx.createLinearGradient(a2.x,a2.y,b2.x,b2.y);
+    grad.addColorStop(0.00, `rgba(215,181,109,${0.10*alpha})`);
+    grad.addColorStop(0.45, `rgba(255,245,220,${0.22*alpha})`);
+    grad.addColorStop(1.00, `rgba(255,245,220,${0.14*alpha})`);
+
+    // 1) 大光暈
     ctx.strokeStyle = `rgba(215,181,109,${0.22*alpha})`;
-    ctx.lineWidth = 18 * a2.s;
+    ctx.lineWidth = OUTER_W1;
     ctx.beginPath(); ctx.moveTo(a2.x,a2.y); ctx.lineTo(b2.x,b2.y); ctx.stroke();
 
-    // inner beam
-    ctx.strokeStyle = `rgba(255,245,220,${0.88*alpha})`;
-    ctx.lineWidth = 5 * a2.s;
+    // 2) 小光暈（帶點漸層）
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = OUTER_W2;
     ctx.beginPath(); ctx.moveTo(a2.x,a2.y); ctx.lineTo(b2.x,b2.y); ctx.stroke();
 
-    // sparkle along beam
-    for(let i=0;i<10;i++){
+    // 3) 亮核
+    ctx.strokeStyle = `rgba(255,245,220,${0.92*alpha})`;
+    ctx.lineWidth = CORE_W;
+    ctx.beginPath(); ctx.moveTo(a2.x,a2.y); ctx.lineTo(b2.x,b2.y); ctx.stroke();
+
+    // 4) 最亮熱核（很細但很亮，讓“光束”更有穿透感）
+    ctx.strokeStyle = `rgba(255,255,255,${0.55*alpha})`;
+    ctx.lineWidth = HOT_W;
+    ctx.beginPath(); ctx.moveTo(a2.x,a2.y); ctx.lineTo(b2.x,b2.y); ctx.stroke();
+
+    // 5) 能量火花：數量變多、範圍變大（更明顯）
+    const sparkN = Math.floor(18 + 18*s);
+    for(let i=0;i<sparkN;i++){
       const t = Math.random();
-      const x = lerp(a2.x,b2.x,t) + (Math.random()-0.5)*10;
-      const y = lerp(a2.y,b2.y,t) + (Math.random()-0.5)*10;
-      const rr = (1 + Math.random()*2.4) * a2.s;
-      ctx.fillStyle = `rgba(255,245,220,${(0.45+Math.random()*0.45)*alpha})`;
+      const x = lerp(a2.x,b2.x,t) + (Math.random()-0.5)*18*s;
+      const y = lerp(a2.y,b2.y,t) + (Math.random()-0.5)*18*s;
+      const rr = (1.2 + Math.random()*3.6) * s;
+
+      ctx.fillStyle = `rgba(255,245,220,${(0.35+Math.random()*0.55)*alpha})`;
       ctx.beginPath(); ctx.arc(x,y,rr,0,Math.PI*2); ctx.fill();
     }
+
+    // 6) 起點/終點能量球（非常有感）
+    const orbR = 10*s*pulse;
+    ctx.fillStyle = `rgba(255,245,220,${0.35*alpha})`;
+    ctx.beginPath(); ctx.arc(a2.x,a2.y,orbR,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(b2.x,b2.y,orbR*0.9,0,Math.PI*2); ctx.fill();
   }
+
+  ctx.restore();
+
+  // 保險：避免影響後續渲染
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
 }
 
 // -------------------- Rendering (3D-ish) --------------------
