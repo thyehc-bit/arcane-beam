@@ -18,6 +18,21 @@ const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
+// ---- GIF sprites (animated) ----
+const monsterGifEl = document.getElementById("monsterGif");
+const bossGifEl = document.getElementById("bossGif");
+
+let monsterGifReady = false;
+let bossGifReady = false;
+
+monsterGifEl.addEventListener("load", () => { monsterGifReady = true; });
+bossGifEl.addEventListener("load", () => { bossGifReady = true; });
+
+// 若 GitHub Pages 快取造成更新不到，可加 querystring（可選）
+// monsterGifEl.src = "./monster.gif?v=4";
+// bossGifEl.src = "./boss.gif?v=4";
+
+
 // ---- Image background (castle) ----
 const castleImg = new Image();
 castleImg.src = "./castle_bg.jpg?v=2";  // cache bust
@@ -366,45 +381,136 @@ const sfx = {
 };
 
 // -------------------- Particles --------------------
-function spawnParticles2D(x,y,count=22, power=1.0){
+// -------------------- Particles (colored) --------------------
+function pick(palette){
+  // palette: [{c:"rgba(...)", w: number}, ...]
+  const total = palette.reduce((s,p)=>s+(p.w||1),0);
+  let r = Math.random()*total;
+  for(const p of palette){
+    r -= (p.w||1);
+    if(r <= 0) return p.c;
+  }
+  return palette[0].c;
+}
+
+const PALETTE_PURPLE_GOLD = [
+  { c: "rgba(180, 120, 255, 1)", w: 3 }, // purple
+  { c: "rgba(215, 181, 109, 1)", w: 3 }, // gold
+  { c: "rgba(255, 245, 220, 1)", w: 1 }, // warm white
+];
+
+const PALETTE_ASH = [
+  { c: "rgba(255, 80, 80, 1)",   w: 2 }, // red ember
+  { c: "rgba(40, 40, 40, 1)",    w: 3 }, // dark ash
+  { c: "rgba(90, 90, 90, 1)",    w: 2 }, // gray ash
+  { c: "rgba(0, 0, 0, 1)",       w: 1 }, // black
+];
+
+function spawnParticles2D(x, y, count=22, power=1.0, palette=PALETTE_PURPLE_GOLD, opts={}){
+  const {
+    grav = 240,          // gravity strength baseline
+    drag = 0.0015,       // damping
+    ttlMin = 0.32,
+    ttlMax = 0.60,
+    speedMin = 60,
+    speedMax = 260,
+    sizeMin = 1.2,
+    sizeMax = 3.2,
+    alphaMin = 0.35,
+    alphaMax = 0.90,
+    streak = false,      // draw streak-like particles? (we keep circle but can extend later)
+  } = opts;
+
   for(let i=0;i<count;i++){
     const a = Math.random()*Math.PI*2;
-    const sp = (40 + Math.random()*220) * power;
+    const sp = (speedMin + Math.random()*(speedMax-speedMin)) * power;
+
     particles.push({
       x, y,
       vx: Math.cos(a)*sp,
       vy: Math.sin(a)*sp,
       life: 0,
-      ttl: 0.32 + Math.random()*0.28,
-      r: 1.2 + Math.random()*2.2,
+      ttl: ttlMin + Math.random()*(ttlMax-ttlMin),
+      r: sizeMin + Math.random()*(sizeMax-sizeMin),
+      c: pick(palette),
+      a0: alphaMin + Math.random()*(alphaMax-alphaMin),
+      grav,
+      drag,
+      streak,
     });
   }
 }
 
+function spawnSparksPurpleGold(x,y,scale=1.0){
+  spawnParticles2D(x,y, 46, scale, PALETTE_PURPLE_GOLD, {
+    grav: 220,
+    drag: 0.0012,
+    ttlMin: 0.25,
+    ttlMax: 0.55,
+    speedMin: 110,
+    speedMax: 420,
+    sizeMin: 1.2,
+    sizeMax: 3.8,
+    alphaMin: 0.35,
+    alphaMax: 0.95,
+  });
+}
+
+function spawnAshBoss(x,y,scale=1.0){
+  // more, heavier, slower -> ash 느낌
+  spawnParticles2D(x,y, 140, scale, PALETTE_ASH, {
+    grav: 520,
+    drag: 0.0022,
+    ttlMin: 0.55,
+    ttlMax: 1.25,
+    speedMin: 40,
+    speedMax: 220,
+    sizeMin: 1.6,
+    sizeMax: 4.6,
+    alphaMin: 0.18,
+    alphaMax: 0.55,
+  });
+}
+
 function updateParticles(dt){
-  const g = 240; // gravity-ish
   const alive = [];
   for(const p of particles){
     p.life += dt;
-    p.vy += g*dt*0.35;
-    p.x += p.vx*dt;
-    p.y += p.vy*dt;
-    p.vx *= Math.pow(0.0015, dt); // damp
-    p.vy *= Math.pow(0.0015, dt);
+
+    // gravity + drag
+    p.vy += (p.grav || 240) * dt * 0.35;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+
+    const drag = p.drag ?? 0.0015;
+    p.vx *= Math.pow(drag, dt);
+    p.vy *= Math.pow(drag, dt);
+
     if(p.life < p.ttl) alive.push(p);
   }
   particles = alive;
 }
 
 function drawParticles(){
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
   for(const p of particles){
     const t = p.life / p.ttl;
-    const a = 1 - t;
-    ctx.fillStyle = `rgba(255,245,220,${0.75*a})`;
+    const a = (1 - t) * (p.a0 ?? 0.6);
+
+    // 把 rgba(...,1) 轉成 rgba(...,a)
+    // 這裡簡單做：若是 rgba(..., 1) 結尾，就替換 alpha
+    const color = p.c.replace(/rgba\(([^)]+),\s*1\)/, `rgba($1, ${a.toFixed(3)})`);
+
+    ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
     ctx.fill();
   }
+
+  ctx.restore();
+  ctx.globalCompositeOperation = "source-over";
 }
 
 // -------------------- Enemies (3D) --------------------
@@ -500,7 +606,7 @@ function updateBoss(dt){
 
     // particles burst at boss screen position
     const p = project3D(boss);
-    spawnParticles2D(p.x, p.y, 120, 1.7);
+    spawnAshBoss(p.x, p.y, 1.25);       // 紅黑灰燼
 
     boss = null;
     ui.bossbar.hidden = true;
@@ -546,9 +652,20 @@ function castBeam3D(from3, nowMs){
   // HIT logic: immediate hit for nearest target (arcade style)
   if(best){
     if(best.type === "boss"){
-      best.hp -= 1;
-      score += Math.floor(6 * combo);
-      sfx.bossHit();
+	best.hp -= 1;
+	score += Math.floor(10 * combo);
+	sfx.hit();
+
+	const died = best.hp <= 0;
+	const hp2 = project3D(best);
+
+	if(died){
+ 	 // 怪物死亡：紫金火花爆裂
+ 	 spawnSparksPurpleGold(hp2.x, hp2.y, 1.0);
+	} else {
+  	// 沒死：小量火花（你要也可以留白）
+ 	 spawnParticles2D(hp2.x, hp2.y, 18, 0.9, PALETTE_PURPLE_GOLD, { ttlMin:0.18, ttlMax:0.35, speedMin:80, speedMax:220 });
+	}
     }else{
       best.hp -= 1;
       score += Math.floor(10 * combo);
@@ -563,17 +680,25 @@ function castBeam3D(from3, nowMs){
     // particles at hit point in screen space
     const hp2 = project3D(best);
     spawnParticles2D(hp2.x, hp2.y, best.type==="boss" ? 34 : 24, best.type==="boss" ? 1.2 : 1.0);
-  } else {
-    streak = 0;
-    combo = 1.0;
+  }else{
+  best.hp -= 1;
+  score += Math.floor(10 * combo);
+  sfx.hit();
+
+  const hp2 = project3D(best);
+  const died = best.hp <= 0;
+
+  if(died){
+    // 小怪死亡：紫金火花爆裂
+    spawnSparksPurpleGold(hp2.x, hp2.y, 1.0);
+  }else{
+    // 小怪未死：少量紫金火花
+    spawnParticles2D(hp2.x, hp2.y, 18, 0.9, PALETTE_PURPLE_GOLD, {
+      ttlMin: 0.18, ttlMax: 0.35, speedMin: 80, speedMax: 220
+    });
   }
-
-  // cleanup dead minions
-  monsters = monsters.filter(m => m.hp > 0);
-
-  // cast sound
-  sfx.cast();
 }
+
 
 function updateBeams(nowMs){
   beams = beams.filter(b => (nowMs - b.born) < b.ttl);
@@ -730,6 +855,43 @@ function drawMonsterBody(p2, radiusPx, isBoss=false){
   ctx.restore();
 }
 
+function drawEnemySprite(m, imgEl, isBoss=false){
+  const p2 = project3D(m);
+  const base = Math.min(canvas.width, canvas.height);
+
+  // 原本你用 m.r * base * p2.s 當半徑；這裡把它變成 sprite 尺寸
+  const radiusPx = m.r * base * p2.s * (isBoss ? 1.35 : 1.0);
+
+  // 依照 GIF 原始比例縮放
+  const iw = imgEl.naturalWidth || 256;
+  const ih = imgEl.naturalHeight || 256;
+  const aspect = iw / ih;
+
+  // sprite 高度/寬度（可微調：想更大就把 2.6 改大）
+  const h = radiusPx * (isBoss ? 3.2 : 2.6);
+  const w = h * aspect;
+
+  const x = p2.x - w/2;
+  const y = p2.y - h/2;
+
+  // 1) 先畫一圈淡淡的魔法光暈（讓 GIF 更融入）
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = isBoss ? "rgba(255,92,92,0.12)" : "rgba(215,181,109,0.10)";
+  ctx.beginPath();
+  ctx.arc(p2.x, p2.y, radiusPx * (isBoss ? 1.25 : 1.10), 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  // 2) 畫 GIF sprite 本體
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 0.95;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(imgEl, x, y, w, h);
+  ctx.restore();
+}
+
 function drawEnemies(){
   // draw farther first
   const list = [...monsters];
@@ -737,10 +899,26 @@ function drawEnemies(){
   list.sort((a,b)=> b.z - a.z);
 
   for(const m of list){
-    const p2 = project3D(m);
-    const base = Math.min(canvas.width, canvas.height);
-    const radiusPx = m.r * base * p2.s * (m.type==="boss" ? 1.2 : 1.0);
-    drawMonsterBody(p2, radiusPx, m.type==="boss");
+    if(m.type === "boss"){
+      if(bossGifReady){
+        drawEnemySprite(m, bossGifEl, true);
+      }else{
+        // fallback: 你原本的幾何怪物（保底）
+        const p2 = project3D(m);
+        const base = Math.min(canvas.width, canvas.height);
+        const radiusPx = m.r * base * p2.s * 1.2;
+        drawMonsterBody(p2, radiusPx, true);
+      }
+    }else{
+      if(monsterGifReady){
+        drawEnemySprite(m, monsterGifEl, false);
+      }else{
+        const p2 = project3D(m);
+        const base = Math.min(canvas.width, canvas.height);
+        const radiusPx = m.r * base * p2.s;
+        drawMonsterBody(p2, radiusPx, false);
+      }
+    }
   }
 }
 

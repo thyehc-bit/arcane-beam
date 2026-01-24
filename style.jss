@@ -109,4 +109,13 @@ button:hover:not(:disabled){ box-shadow: 0 0 22px rgba(215,181,109,.18); }
   background: linear-gradient(90deg, rgba(255,92,92,.9), rgba(215,181,109,.95));
   box-shadow: 0 0 18px rgba(255,92,92,.35);
 }
+.preload-gif{
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  left: -9999px;
+  top: -9999px;
+}
 
