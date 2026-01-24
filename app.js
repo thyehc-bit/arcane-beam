@@ -540,7 +540,7 @@ function castBeam3D(from3, nowMs){
     ax: from3.x, ay: from3.y, az: from3.z,
     bx: to3.x,   by: to3.y,   bz: to3.z,
     born: nowMs,
-    ttl: 1380,
+    ttl: 138,
   });
 
   // HIT logic: immediate hit for nearest target (arcade style)
@@ -601,10 +601,10 @@ function drawBeams(nowMs){
     const pulse = 0.92 + 0.18 * Math.sin(nowMs/55 + b.ax*10);
 
     // === 你可以在這裡調整「粗細」 ===
-    const OUTER_W1 = 176 * s * pulse;   // 外圈大光暈（最粗）
-    const OUTER_W2 = 150 * s * pulse;   // 外圈小光暈
-    const CORE_W   =  65 * s * pulse;   // 內核（最亮）
-    const HOT_W    =  18 * s * pulse;   // 中間熱核（最白）
+    const OUTER_W1 = 76 * s * pulse;   // 外圈大光暈（最粗）
+    const OUTER_W2 = 50 * s * pulse;   // 外圈小光暈
+    const CORE_W   =  16 * s * pulse;   // 內核（最亮）
+    const HOT_W    =  8 * s * pulse;   // 中間熱核（最白）
 
     // 讓光束本身沿著方向有些微漸層（更像能量）
     const grad = ctx.createLinearGradient(a2.x,a2.y,b2.x,b2.y);
@@ -994,6 +994,3 @@ ui.btnReset.addEventListener("click", async () => {
 // initial
 syncHUD();
 setHint("準備就緒。按 Start 後，把手伸到鏡頭前，『向前推進』施法。");
-
-
-
