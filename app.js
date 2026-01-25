@@ -335,6 +335,46 @@ function palmArea2D(landmarks){
   return w*h;
 }
 
+// 取光束起點：預設用食指指尖(8)。想改掌心就看下方註解。
+function beamOrigin2DNorm(landmarks2D){
+  // 食指指尖：更像「施法從指尖射出」
+  //return { x: landmarks2D[8].x, y: landmarks2D[8].y };
+
+  // 若你想從掌心中心出發，改用這段：
+   const idx=[0,5,9,13,17];
+   let x=0,y=0;
+   for(const i of idx){ x+=landmarks2D[i].x; y+=landmarks2D[i].y; }
+   return { x:x/idx.length, y:y/idx.length };
+}
+
+// 用手在畫面上的大小估一個 z（越靠近鏡頭手越大 -> z 越小）
+function estimateHandZFromArea(area){
+  const size = Math.sqrt(Math.max(1e-6, area));       // 大約跟手的線性尺寸成正比
+  return clamp(2.0 - size * 8.0, 0.45, 2.6);          // 可微調：2.0/8.0/0.45/2.6
+}
+
+// 把「畫面上的點(0..1)」變成「場景座標」，確保投影回去剛好是手的位置
+function sceneFromScreenNorm(ptNorm, z){
+  // video 有 rotateY(180deg) 自拍鏡像，但 landmarks 是未鏡像座標，所以要 mirror X 才對齊你看到的手
+  const nx = 1 - ptNorm.x;
+  const ny = ptNorm.y;
+
+  const px = nx * canvas.width;
+  const py = ny * canvas.height;
+
+  const zz = Math.max(cam.zNear, z);
+  const s  = cam.fov / (cam.fov + zz * 260);
+
+  const cx = canvas.width * 0.5;
+  const cy = canvas.height * cam.horizon;
+
+  const x = (px - cx) / (canvas.width  * 0.55 * s);
+  const y = (py - cy) / (canvas.height * 0.70 * s);
+
+  return { x, y, z: zz };
+}
+
+
 function palmZWorld(worldLandmarks){
   // average z of wrist + MCPs
   const idx = [0,5,9,13,17];
@@ -996,9 +1036,13 @@ function tryDetectCast(handednessLabel, landmarks2D, worldLandmarks, nowMs){
   if(cooldownOK && zStrong && forwardConfirm){
     st.lastCastMs = nowMs;
 
-    const wp = palmXYWorld(worldLandmarks);
-    const from3 = mapHandToScene(wp);
-    castBeam3D(from3, nowMs);
+  // 用 2D 手的位置當光束起點（從你看到的手出發）
+  const pt = beamOrigin2DNorm(landmarks2D);
+  const z0 = estimateHandZFromArea(area);   // 也可直接固定：const z0 = 1.2;
+  const from3 = sceneFromScreenNorm(pt, z0);
+
+  castBeam3D(from3, nowMs);
+
   }
 
   st.lastZ = z;
