@@ -18,6 +18,43 @@ const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
+// ---- Background Music (BGM) ----
+const bgm = document.getElementById("bgm");
+let bgmEnabled = true;
+
+// 可調整音量
+if (bgm) bgm.volume = 0.35;
+
+// 平滑淡入/淡出（可選）
+function fadeBgmTo(targetVol, ms = 500){
+  if(!bgm) return;
+  const start = bgm.volume;
+  const t0 = performance.now();
+  const tick = (t) => {
+    const k = Math.min(1, (t - t0) / ms);
+    bgm.volume = start + (targetVol - start) * k;
+    if(k < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+async function bgmPlay(){
+  if(!bgm || !bgmEnabled) return;
+  try{
+    // iOS/Chrome：必須由使用者手勢觸發（Start 按鈕點擊）才會成功
+    await bgm.play();
+    fadeBgmTo(0.35, 250);
+  }catch(e){
+    console.warn("BGM play blocked:", e);
+  }
+}
+
+function bgmPause(){
+  if(!bgm) return;
+  try{ bgm.pause(); }catch(e){}
+}
+
+
 // ---- GIF sprites (animated) ----
 const monsterGifEl = document.getElementById("monsterGif");
 const bossGifEl = document.getElementById("bossGif");
@@ -1079,6 +1116,9 @@ async function loop(nowMs){
     ui.btnPause.disabled = true;
     setHint("☠️ 你倒下了…按 Reset 再來一次。");
     sfx.gameOver();
+    fadeBgmTo(0.0, 700);
+    setTimeout(()=>bgmPause(), 750);
+
   } else {
     setHint("提示：『向鏡頭推進』(z 方向) + 手變大(靠近鏡頭) 會觸發施法。");
   }
@@ -1144,6 +1184,8 @@ ui.btnStart.addEventListener("click", async () => {
     setTimeout(() => document.querySelector(".overlay").style.display = "none", 250);
 
     requestAnimationFrame(loop);
+    await bgmPlay();
+
   }catch(e){
     console.error(e);
     ui.btnStart.disabled = false;
@@ -1154,9 +1196,10 @@ ui.btnStart.addEventListener("click", async () => {
 ui.btnPause.addEventListener("click", async () => {
   paused = !paused;
   ui.btnPause.textContent = paused ? "Resume" : "Pause";
-  if(!paused){
-    ensureAudio();
-    if(audioCtx.state === "suspended") await audioCtx.resume();
+  if(paused){
+    bgmPause();
+  }else{
+    await bgmPlay();
   }
 });
 
