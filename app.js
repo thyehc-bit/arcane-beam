@@ -66,7 +66,7 @@ monsterGifEl.addEventListener("load", () => { monsterGifReady = true; });
 bossGifEl.addEventListener("load", () => { bossGifReady = true; });
 
 // 若 GitHub Pages 快取造成更新不到，可加 querystring（可選）
-// monsterGifEl.src = "./monster.gif?v=4";
+// monsterGifEl.src = "./monster.png?v=4";
 // bossGifEl.src = "./boss.gif?v=4";
 
 
